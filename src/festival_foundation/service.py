@@ -71,6 +71,16 @@ class DomainService:
         )
         return WriteReceipt(request_id, resource_type, resource_id, False)
 
+    def run_idempotent(self, connection, *, request_id: str, action: str,
+                       payload: dict[str, Any], create: Callable[[], tuple[str, str, dict[str, Any]]]) -> dict[str, Any]:
+        """执行幂等写入并返回稳定保存的响应内容，供领域模块组装更丰富的结果。"""
+
+        receipt = self._idempotent(connection, request_id=request_id, action=action, payload=payload, create=create)
+        row = connection.execute(
+            "SELECT response_json FROM request_receipts WHERE request_id=?", (request_id,)
+        ).fetchone()
+        return {"request_id": receipt.request_id, "replayed": receipt.replayed, **json.loads(row["response_json"])}
+
     def register_organization(self, *, request_id: str, actor_id: str,
                               organization_id: str, name: str) -> WriteReceipt:
         payload = {"actor_id": actor_id, "organization_id": organization_id, "name": name}
